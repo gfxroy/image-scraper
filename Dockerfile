@@ -1,5 +1,5 @@
 # Start with the official Google base image
-FROM gcr.io/google-appengine/python
+FROM python:3.11-slim
 
 # Set the working directory
 WORKDIR /app
