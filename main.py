@@ -9,37 +9,35 @@ def score_image(img_tag, product_url):
     src = ""
     # Use the highest resolution source available from srcset
     if img_tag.get('srcset'):
-        # Get the first URL from the list
         src = img_tag.get('srcset').split(',')[0].strip().split(' ')[0]
     elif img_tag.get('src'):
         src = img_tag.get('src')
     else:
-        return 0, "" # No source, no score
+        return 0, ""
 
     # Ignore tiny placeholders, icons, and logos
     if 'data:image' in src or '.svg' in src or '.gif' in src:
         return 0, ""
 
     # CLUE 1: Higher score for being a high-resolution image
-    # We check if the 'src' URL itself gives a hint about size
-    if '1000x1000' in src or 'large' in src:
+    if '1000x1000' in src or 'large' in src or '1024x1024' in src:
         score += 20
     if '300x300' in src or 'medium' in src:
         score += 10
     if '150x150' in src or 'thumb' in src:
-        score -= 10 # Penalize thumbnails
+        score -= 10
 
-    # CLUE 2: Check the 'alt' text for descriptive words
+    # CLUE 2: Check the 'alt' text
     alt_text = img_tag.get('alt', '').lower()
     if 'zoom' in alt_text or 'front' in alt_text:
         score += 15
     if 'logo' in alt_text:
-        score -= 50 # Heavily penalize logos
+        score -= 50
 
     # CLUE 3: Check the image's class names
     class_names = " ".join(img_tag.get('class', [])).lower()
-    if 'wp-post-image' in class_names or 'main-image' in class_names:
-        score += 30 # This is a strong positive signal
+    if 'wp-post-image' in class_names or 'main-image' in class_names or 'product-image' in class_names:
+        score += 30
 
     full_url = urllib.parse.urljoin(product_url, src)
     return score, full_url
@@ -66,48 +64,39 @@ def scrape_product_images(request):
             
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            candidate_images = []
-            # Try to find a specific gallery container first for higher quality candidates
             gallery = soup.find('figure', {'class': 'woocommerce-product-gallery'}) or \
                       soup.find('div', {'data-testid': 'image-carousel-container'})
-
-            if gallery:
-                print("INFO: Found specific image gallery. Processing candidates.")
-                candidate_images = gallery.find_all('img')
-            else:
-                print("WARNING: No specific gallery found. Using all images on page.")
-                candidate_images = soup.find_all('img')
+            
+            candidate_images = gallery.find_all('img') if gallery else soup.find_all('img')
 
             if not candidate_images:
-                print("ERROR: No images found on the page at all.")
                 return ({"error": "No images could be found on the page."}, 404, headers)
 
-            # Score all candidate images
             scored_images = []
+            print("\n--- STARTING IMAGE SCORING ---")
             for img in candidate_images:
                 score, url = score_image(img, product_url)
-                if score > 0 and url:
-                    scored_images.append({'score': score, 'url': url})
+                # DEBUG: Print the score for every single image
+                if url:
+                    print(f"DEBUG: Score={score}, URL={url}")
+                    if score > 0:
+                        scored_images.append({'score': score, 'url': url})
+            print("--- FINISHED IMAGE SCORING ---\n")
             
-            # If no images scored positive, return an error
             if not scored_images:
-                print("ERROR: Found images, but none met the filtering criteria.")
                 return ({"error": "Could not identify a suitable product image."}, 404, headers)
 
-            # Sort by score (highest first) and remove duplicates
-            # A bit of logic to handle duplicate URLs from scoring
             seen_urls = set()
             unique_sorted_images = []
             for item in sorted(scored_images, key=lambda x: x['score'], reverse=True):
                 if item['url'] not in seen_urls:
                     unique_sorted_images.append(item)
                     seen_urls.add(item['url'])
-
-            best_image_url = unique_sorted_images[0]['url']
-            print(f"SUCCESS: Best image found with score {unique_sorted_images[0]['score']}: {best_image_url}")
-
-            # Return just the single best URL
-            return ({"product_image": best_image_url}, 200, headers)
+            
+            print(f"SUCCESS: Found {len(unique_sorted_images)} unique, scorable images.")
+            # --- CHANGE FOR DEBUGGING ---
+            # Instead of returning just one, return the whole sorted list.
+            return ({"scored_images": unique_sorted_images}, 200, headers)
 
     except Exception as e:
         print(f"CRITICAL: An error occurred: {e}")
