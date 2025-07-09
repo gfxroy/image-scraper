@@ -46,7 +46,8 @@ def scrape_product_images(request):
             
             # ** PARSER LOGIC FOR WALMART.COM **
             # We found this by inspecting Walmart's page. Other sites will be different.
-            image_container = soup.find('div', {'data-testid': 'image-carousel-container'})
+            # --- PARSER LOGIC FOR WOOCOMMERCE SITES (like fitenue.com) ---
+            image_container = soup.find('figure', {'class': 'woocommerce-product-gallery'})
             
             if image_container:
                 print("Found the image container.")
